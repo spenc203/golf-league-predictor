@@ -16,14 +16,14 @@ linear_model_path = os.path.join(model_dir, 'linear_model.pkl')
 logistic_model_path = os.path.join(model_dir, 'logistic_model.pkl')
 historical_data_path = os.path.join(model_dir, 'historical_data.csv')
 
-# --- LOAD ASSETS ---
+# --- LOAD ASSETS (Models and Data) ---
 @st.cache_resource
 def load_assets():
+    """Loads models and static data once."""
     try:
         linear_model = joblib.load(linear_model_path)
         logistic_model = joblib.load(logistic_model_path)
         historical_data = pd.read_csv(historical_data_path)
-        # Note: feature_names_in_ holds the column order from training
         feature_names = linear_model.feature_names_in_.tolist()
         return linear_model, logistic_model, historical_data, feature_names
     except Exception as e:
@@ -68,28 +68,39 @@ with st.sidebar:
     final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
 
 
-# --- DIAGNOSTIC CODE (TEMPORARY: CHECK THIS FIRST!) ---
-st.subheader("⚠️ Diagnostic: Model Input Data")
-st.markdown("🚨 **CRITICAL CHECK:** This table must change when you adjust sidebar inputs. If it doesn't, the app is not rerunning.")
-st.dataframe(final_input_df)
-st.markdown("---")
+# --- DIAGNOSTIC CODE (TEMPORARY: DELETE THIS LATER) ---
+# st.subheader("⚠️ Diagnostic: Model Input Data")
+# st.markdown("🚨 **CRITICAL CHECK:** This table must change when you adjust sidebar inputs. If it doesn't, the app is not rerunning.")
+# st.dataframe(final_input_df)
+# st.markdown("---")
 # --- END DIAGNOSTIC CODE ---
 
 
-# --- 1. LINEAR REGRESSION PREDICTION ---
+# --- 1. PREDICTION FUNCTION (CRITICAL FIX FOR REACTIVITY) ---
+@st.cache_data(show_spinner=False) # Use st.cache_data to force re-run when inputs change
+def get_predictions(df, linear_model, logistic_model):
+    """Calculates predictions and probability from the input DataFrame."""
+    
+    # 1. LINEAR REGRESSION PREDICTION
+    predicted_score = linear_model.predict(df)[0]
+    
+    # 2. LOGISTIC REGRESSION PROBABILITY
+    probability_to_win = logistic_model.predict_proba(df)[0][1] * 100 
+    
+    return predicted_score, probability_to_win
+
+# Run the prediction function with the dynamically changing input DataFrame
+predicted_score, probability_to_win = get_predictions(
+    final_input_df, linear_model, logistic_model
+)
+
+
+# --- 2. DISPLAY METRICS ---
 st.header("🔮 Predicted Performance")
 col1, col2 = st.columns(2)
 
-# Prediction Logic
-predicted_score = linear_model.predict(final_input_df)[0]
-
 with col1:
     st.metric("Predicted Score (Strokes Over Par)", f"{predicted_score:.2f}")
-
-# --- 2. LOGISTIC REGRESSION PROBABILITY ---
-
-# Probability Logic
-probability_to_win = logistic_model.predict_proba(final_input_df)[0][1] * 100 
 
 with col2:
     st.metric("**Probability to Score Better Than Average**", f"{probability_to_win:.1f}%")
