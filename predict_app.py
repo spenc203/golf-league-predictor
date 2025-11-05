@@ -99,4 +99,76 @@ st.markdown("---")
 # --- 3. EXPLANATION AND CHARTS ---
 st.header("📊 Contextual Analysis")
 
-tab1, tab2 = st.tabs(["Player Historical Trend",
+# FINAL SYNTAX FIX
+tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
+
+# --- TAB 1: HISTORICAL TREND ---
+with tab1:
+    st.subheader(f"{selected_player}'s Scoring History")
+    player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
+    
+    if not player_history.empty:
+        # Create a sequence of rounds for the x-axis
+        # CRITICAL FIX for ValueError
+        player_history['RoundNumber'] = range(1, len(player_history) + 1)
+        
+        fig = px.scatter(
+            player_history, 
+            x='RoundNumber', 
+            y='OverPar', 
+            color='PlayerName', 
+            trendline='ols',
+            title=f'{selected_player}: Score Over Time (Trendline: OLS Regression)',
+            labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
+        )
+        fig.update_layout(showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No historical data found for this player.")
+
+# --- TAB 2: MODEL COEFFICIENTS ---
+with tab2:
+    st.subheader("Model Weights: How Inputs Influence Prediction")
+    
+    # Extract Coefficients and sort them
+    coef_df = pd.DataFrame({
+        'Feature': linear_model.feature_names_in_,
+        'Coefficient': linear_model.coef_[0]
+    })
+    
+    # Highlight the selected player's skill coefficient
+    player_skill_feature = f'PlayerName_{selected_player}'
+    
+    # Filter the DataFrame to only show the chosen player, Handicap, and PrevScore
+    display_coef_df = coef_df[
+        (coef_df['Feature'] == 'Handicap') | 
+        (coef_df['Feature'] == 'PrevRoundScore') |
+        (coef_df['Feature'] == player_skill_feature)
+    ].copy()
+    
+    # Rename features for better display
+    display_coef_df['Feature'] = display_coef_df['Feature'].replace({
+        'Handicap': 'Current Handicap',
+        'PrevRoundScore': 'Previous Score',
+        player_skill_feature: 'Player Skill Factor'
+    })
+    
+    # Create Bar Chart
+    fig_coef = px.bar(
+        display_coef_df, 
+        x='Coefficient', 
+        y='Feature', 
+        orientation='h',
+        title='Impact of Key Factors on Predicted Score',
+        labels={'Coefficient': 'Impact on Predicted Score (Lower is Better)'}
+    )
+    # Highlight colors: Green for negative (good), Red for positive (bad)
+    fig_coef.update_traces(marker_color=['red' if c > 0 else 'green' for c in display_coef_df['Coefficient']])
+
+    st.plotly_chart(fig_coef, use_container_width=True)
+    
+    st.markdown(
+        """
+        *A **Negative Coefficient (Green)** means that factor (e.g., lower Handicap) drives the predicted score **DOWN** (better).* *A **Positive Coefficient (Red)** means that factor (e.g., higher Previous Score) drives the predicted score **UP** (worse).*
+        """
+    )
