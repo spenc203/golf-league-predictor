@@ -23,7 +23,6 @@ def load_assets():
         linear_model = joblib.load(linear_model_path)
         logistic_model = joblib.load(logistic_model_path)
         historical_data = pd.read_csv(historical_data_path)
-        # Create the input feature list (all features except the one being predicted)
         # Note: feature_names_in_ holds the column order from training
         feature_names = linear_model.feature_names_in_.tolist()
         return linear_model, logistic_model, historical_data, feature_names
@@ -48,30 +47,66 @@ with st.sidebar:
     
     is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
     
-    # --- PREPARE INPUT DATAFRAME (CRITICAL FIX FOR NaN/ValueError) ---
+    # --- PREPARE INPUT DATAFRAME (Explicitly robust creation) ---
     
-    # Dictionary to hold the user inputs
-    input_data_user = {
-        'Handicap': [current_handicap],
-        'PrevRoundScore': [previous_score],
-        # Only one of these will be 1, the other is handled below by default=0
-        'CourseSide_Front Nine': [1 if is_front_nine == "Front Nine" else 0],
-        'CourseSide_Back Nine': [1 if is_front_nine == "Back Nine" else 0],
-    }
-
-    # Dynamically add the selected player's dummy variable (set to 1)
-    player_skill_feature = f'PlayerName_{selected_player}'
-    input_data_user[player_skill_feature] = [1]
-    
-    # Final structured data dictionary (ensures all model features are present)
+    # Dictionary to hold the features required by the model
     final_input_data = {}
-    
+
+    # 1. Initialize all features required by the model to [0]
     for col in feature_names:
-        if col in input_data_user:
-            # Transfer the user input/1
-            final_input_data[col] = input_data_user[col]
-        else:
-            # Set all other dummy variables (unselected players, course side not chosen) to 0
-            final_input_data[col] = [0]
-            
-    # Create the final DataFrame, guaranteeing correct
+        final_input_data[col] = [0] 
+
+    # 2. Add the user-defined numerical values
+    final_input_data['Handicap'] = [current_handicap]
+    final_input_data['PrevRoundScore'] = [previous_score]
+
+    # 3. Set the specific dummy variables to [1]
+    if is_front_nine == "Front Nine":
+        final_input_data['CourseSide_Front Nine'] = [1]
+    else:
+        # Note: The 'CourseSide_Back Nine' column must exist in feature_names for this to work
+        final_input_data['CourseSide_Back Nine'] = [1] 
+
+    # Set the selected player's dummy variable to [1]
+    player_skill_feature = f'PlayerName_{selected_player}'
+    final_input_data[player_skill_feature] = [1]
+        
+    # Create the final DataFrame, guaranteeing correct columns and a single row
+    final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
+
+
+# --- 1. LINEAR REGRESSION PREDICTION ---
+st.header("🔮 Predicted Performance")
+col1, col2 = st.columns(2)
+
+# Prediction Logic
+predicted_score = linear_model.predict(final_input_df)[0]
+
+with col1:
+    st.metric("Predicted Score (Strokes Over Par)", f"{predicted_score:.2f}")
+
+# --- 2. LOGISTIC REGRESSION PROBABILITY ---
+
+# Probability Logic
+# Predicts the probability of the POSITIVE class (1: Better than Average)
+probability_to_win = logistic_model.predict_proba(final_input_df)[0][1] * 100 
+
+with col2:
+    # CORRECTED LABEL
+    st.metric("**Probability to Score Better Than Average**", f"{probability_to_win:.1f}%")
+
+st.markdown("---")
+
+# --- 3. EXPLANATION AND CHARTS ---
+st.header("📊 Contextual Analysis")
+
+tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
+
+# --- TAB 1: HISTORICAL TREND ---
+with tab1:
+    st.subheader(f"{selected_player}'s Scoring History")
+    player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
+    
+    if not player_history.empty:
+        # Create a sequence of rounds for the x-axis
+        player_
