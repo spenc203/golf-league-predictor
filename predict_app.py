@@ -47,7 +47,7 @@ with st.sidebar:
     
     is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
     
-    # --- PREPARE INPUT DATAFRAME (Explicitly robust creation) ---
+    # --- PREPARE INPUT DATAFRAME (Explicitly robust creation to prevent ValueError) ---
     
     # Dictionary to hold the features required by the model
     final_input_data = {}
@@ -64,7 +64,6 @@ with st.sidebar:
     if is_front_nine == "Front Nine":
         final_input_data['CourseSide_Front Nine'] = [1]
     else:
-        # Note: The 'CourseSide_Back Nine' column must exist in feature_names for this to work
         final_input_data['CourseSide_Back Nine'] = [1] 
 
     # Set the selected player's dummy variable to [1]
@@ -109,4 +108,4 @@ with tab1:
     
     if not player_history.empty:
         # Create a sequence of rounds for the x-axis
-        player_
+        player_history['RoundNumber'] = player_history
