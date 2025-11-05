@@ -49,29 +49,31 @@ with st.sidebar:
     
     # --- PREPARE INPUT DATAFRAME (Robust creation) ---
     
-    # Dictionary to hold the features required by the model
     final_input_data = {}
 
-    # 1. Initialize all features required by the model to [0]
     for col in feature_names:
         final_input_data[col] = [0] 
 
-    # 2. Add the user-defined numerical values
     final_input_data['Handicap'] = [current_handicap]
     final_input_data['PrevRoundScore'] = [previous_score]
 
-    # 3. Set the specific dummy variables to [1]
     if is_front_nine == "Front Nine":
         final_input_data['CourseSide_Front Nine'] = [1]
     else:
         final_input_data['CourseSide_Back Nine'] = [1] 
 
-    # Set the selected player's dummy variable to [1]
     player_skill_feature = f'PlayerName_{selected_player}'
     final_input_data[player_skill_feature] = [1]
         
-    # Create the final DataFrame, guaranteeing correct columns and a single row
     final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
+
+
+# --- DIAGNOSTIC CODE (TEMPORARY: CHECK THIS FIRST!) ---
+st.subheader("⚠️ Diagnostic: Model Input Data")
+st.markdown("🚨 **CRITICAL CHECK:** This table must change when you adjust sidebar inputs. If it doesn't, the app is not rerunning.")
+st.dataframe(final_input_df)
+st.markdown("---")
+# --- END DIAGNOSTIC CODE ---
 
 
 # --- 1. LINEAR REGRESSION PREDICTION ---
@@ -87,11 +89,9 @@ with col1:
 # --- 2. LOGISTIC REGRESSION PROBABILITY ---
 
 # Probability Logic
-# Predicts the probability of the POSITIVE class (1: Better than Average)
 probability_to_win = logistic_model.predict_proba(final_input_df)[0][1] * 100 
 
 with col2:
-    # CORRECTED LABEL
     st.metric("**Probability to Score Better Than Average**", f"{probability_to_win:.1f}%")
 
 st.markdown("---")
@@ -107,8 +107,6 @@ with tab1:
     player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
     
     if not player_history.empty:
-        # Create a sequence of rounds for the x-axis
-        # CRITICAL FIX for ValueError
         player_history['RoundNumber'] = range(1, len(player_history) + 1)
         
         fig = px.scatter(
@@ -129,16 +127,14 @@ with tab1:
 with tab2:
     st.subheader("Model Weights: How Inputs Influence Prediction")
     
-    # Extract Coefficients 
     coef_df = pd.DataFrame({
         'Feature': linear_model.feature_names_in_,
         'Coefficient': linear_model.coef_[0]
     })
     
-    # Highlight the selected player's skill coefficient
     player_skill_feature = f'PlayerName_{selected_player}'
     
-    # CRITICAL FIX: Define ALL features to display for a comprehensive portfolio view.
+    # All features to display for comprehensive portfolio view
     features_to_display = [
         'Handicap', 
         'PrevRoundScore', 
@@ -147,10 +143,8 @@ with tab2:
         player_skill_feature  
     ]
     
-    # Filter the DataFrame to only show the chosen features
     display_coef_df = coef_df[coef_df['Feature'].isin(features_to_display)].copy()
     
-    # Rename features for better display
     display_coef_df['Feature'] = display_coef_df['Feature'].replace({
         'Handicap': 'Current Handicap',
         'PrevRoundScore': 'Previous Score Momentum',
@@ -159,7 +153,6 @@ with tab2:
         player_skill_feature: 'Player Skill Factor' 
     })
     
-    # Create Bar Chart
     fig_coef = px.bar(
         display_coef_df, 
         x='Coefficient', 
@@ -168,7 +161,6 @@ with tab2:
         title='Impact of Key Factors on Predicted Score',
         labels={'Coefficient': 'Impact on Predicted Score (Lower is Better)'}
     )
-    # Highlight colors: Green for negative (good), Red for positive (bad)
     fig_coef.update_traces(marker_color=['red' if c > 0 else 'green' for c in display_coef_df['Coefficient']])
 
     st.plotly_chart(fig_coef, use_container_width=True)
