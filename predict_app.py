@@ -21,7 +21,6 @@ historical_data_path = os.path.join(model_dir, 'historical_data.csv')
 def load_assets():
     """Loads models and static data once."""
     try:
-        # NOTE: Model and Log_Model contain your original feature names (HandicapPre, Lag_OverPar, etc.)
         linear_model = joblib.load(linear_model_path)
         logistic_model = joblib.load(logistic_model_path)
         historical_data = pd.read_csv(historical_data_path)
@@ -31,7 +30,7 @@ def load_assets():
         PLAYER_FEATURE_NAMES = [name for name in feature_names if name.startswith('PlayerName_')]
         player_names = sorted([name.replace("PlayerName_", "") for name in PLAYER_FEATURE_NAMES])
 
-        # Example value from your original code (Adjust this if your actual RMSE is different)
+        # Example value from your original code 
         RMSE_VALUE = 2.93
         
         return linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE
@@ -75,7 +74,7 @@ with st.sidebar:
     final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
 
 
-# --- 2. PREDICTION FUNCTION (Reactive Fix) ---
+# --- 2. PREDICTION FUNCTION (CRITICAL FIX FOR REACTIVITY) ---
 @st.cache_data(show_spinner=False)
 def get_predictions(df):
     """Calculates predictions and probability using static models."""
@@ -171,16 +170,17 @@ with tab2:
         player_skill_feature: 'Player Skill Factor' 
     })
     
+    # CRITICAL FIX for ValueError: Using 'Coefficient' for X-axis and coloring
     fig_coef = px.bar(
         display_coef_df, 
+        y='Factor', 
         x='Coefficient', 
-        y='Feature', 
         orientation='h',
-        color='Impact', # Use impact for coloring
-        color_continuous_scale=px.colors.diverging.RdBu, # Reverting to Blue/Red gradient
-        labels={'Impact': 'Impact on Predicted OverPar Score (Strokes)'}
+        color='Coefficient', 
+        color_continuous_scale=px.colors.diverging.RdBu,
+        labels={'Coefficient': 'Impact on Predicted OverPar Score (Strokes)'}
     )
-    # Re-apply coloring (though ploty may overwrite with gradient scale)
+    # Re-apply coloring
     fig_coef.update_traces(marker_color=['red' if c > 0 else 'blue' for c in display_coef_df['Coefficient']])
 
     st.plotly_chart(fig_coef, use_container_width=True)
