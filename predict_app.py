@@ -40,6 +40,12 @@ def load_assets():
 
 linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE = load_assets()
 
+# --- NEW DEBUG LINE ---
+st.sidebar.markdown("---")
+st.sidebar.caption("DEBUG: Model's Expected Features (First 5):")
+st.sidebar.code(feature_names[:5])
+st.sidebar.caption("Ensure your input features match these exactly.")
+# --- END NEW DEBUG LINE ---
 
 # --- SIDEBAR INPUTS ---
 with st.sidebar:
