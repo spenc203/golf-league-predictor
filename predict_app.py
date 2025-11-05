@@ -99,4 +99,26 @@ st.markdown("---")
 # --- 3. EXPLANATION AND CHARTS ---
 st.header("📊 Contextual Analysis")
 
-tab1, tab2 = st.tabs(["Player
+# FIX for the unterminated string error you found
+tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
+
+# --- TAB 1: HISTORICAL TREND ---
+with tab1:
+    st.subheader(f"{selected_player}'s Scoring History")
+    player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
+    
+    if not player_history.empty:
+        # Create a sequence of rounds for the x-axis
+        player_history['RoundNumber'] = player_history.index + 1
+        
+        fig = px.scatter(
+            player_history, 
+            x='RoundNumber', 
+            y='OverPar', 
+            color='PlayerName', 
+            trendline='ols',
+            title=f'{selected_player}: Score Over Time (Trendline: OLS Regression)',
+            labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
+        )
+        fig.update_layout(showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
