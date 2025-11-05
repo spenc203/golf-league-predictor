@@ -30,7 +30,7 @@ def load_assets():
         PLAYER_FEATURE_NAMES = [name for name in feature_names if name.startswith('PlayerName_')]
         player_names = sorted([name.replace("PlayerName_", "") for name in PLAYER_FEATURE_NAMES])
 
-        # Example value from your original code 
+        # Example value for display
         RMSE_VALUE = 2.93
         
         return linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE
@@ -59,11 +59,11 @@ with st.sidebar:
     for col in feature_names:
         final_input_data[col] = [0] 
 
-    # Map current inputs to ORIGINAL feature names: HandicapPre, Lag_OverPar
+    # Map current inputs to ORIGINAL feature names
     final_input_data['HandicapPre'] = [current_handicap]
     final_input_data['Lag_OverPar'] = [previous_score]
 
-    # Map Course Side to ORIGINAL feature names: Links_Front Nine (assuming this is your front nine dummy)
+    # Map Course Side to ORIGINAL feature names (Links_Front Nine)
     if is_front_nine == "Front Nine":
         if 'Links_Front Nine' in final_input_data:
              final_input_data['Links_Front Nine'] = [1]
@@ -74,7 +74,7 @@ with st.sidebar:
     final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
 
 
-# --- 2. PREDICTION FUNCTION (CRITICAL FIX FOR REACTIVITY) ---
+# --- 2. PREDICTION FUNCTION (Reactive Fix) ---
 @st.cache_data(show_spinner=False)
 def get_predictions(df):
     """Calculates predictions and probability using static models."""
@@ -151,7 +151,7 @@ with tab2:
     
     player_skill_feature = f'PlayerName_{selected_player}'
     
-    # Include ALL desired features with their ORIGINAL names
+    # Include ALL desired features
     features_to_display = [
         'HandicapPre', 
         'Lag_OverPar', 
@@ -170,15 +170,16 @@ with tab2:
         player_skill_feature: 'Player Skill Factor' 
     })
     
-    # CRITICAL FIX for ValueError: Using 'Coefficient' for X-axis and coloring
+    # CRITICAL FIX for ValueError: Using 'Feature' for Y-axis and 'Coefficient' for X-axis/coloring
     fig_coef = px.bar(
         display_coef_df, 
-        y='Factor', 
+        y='Feature', 
         x='Coefficient', 
         orientation='h',
         color='Coefficient', 
         color_continuous_scale=px.colors.diverging.RdBu,
-        labels={'Coefficient': 'Impact on Predicted OverPar Score (Strokes)'}
+        labels={'Coefficient': 'Impact on Predicted OverPar Score (Strokes)',
+                'Feature': 'Factor'} 
     )
     # Re-apply coloring
     fig_coef.update_traces(marker_color=['red' if c > 0 else 'blue' for c in display_coef_df['Coefficient']])
