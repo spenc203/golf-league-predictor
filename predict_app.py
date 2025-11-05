@@ -5,7 +5,7 @@ import joblib
 import plotly.express as px
 import os
 
-# --- 1. CONFIGURATION ---
+# --- 1. CONFIGURATION & Setup ---
 st.set_page_config(layout="wide")
 st.sidebar.title("Welcome to the Golf Dashboard!")
 st.title("⛳ Advanced Golf League Data Dashboard")
@@ -21,19 +21,26 @@ historical_data_path = os.path.join(model_dir, 'historical_data.csv')
 def load_assets():
     """Loads models and static data once."""
     try:
+        # NOTE: Model and Log_Model contain your original feature names (HandicapPre, Lag_OverPar, etc.)
         linear_model = joblib.load(linear_model_path)
         logistic_model = joblib.load(logistic_model_path)
         historical_data = pd.read_csv(historical_data_path)
         feature_names = linear_model.feature_names_in_.tolist()
-        return linear_model, logistic_model, historical_data, feature_names
+        
+        # Prepare list of player names based on model features
+        PLAYER_FEATURE_NAMES = [name for name in feature_names if name.startswith('PlayerName_')]
+        player_names = sorted([name.replace("PlayerName_", "") for name in PLAYER_FEATURE_NAMES])
+
+        # Example value from your original code (Adjust this if your actual RMSE is different)
+        RMSE_VALUE = 2.93
+        
+        return linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE
     except Exception as e:
         st.error(f"Error loading models or data: {e}. Please ensure all .pkl and .csv files are present.")
         st.stop()
 
-linear_model, logistic_model, historical_data, feature_names = load_assets()
+linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE = load_assets()
 
-# Get the unique player names for the dropdown
-player_names = sorted(historical_data['PlayerName'].unique().tolist())
 
 # --- SIDEBAR INPUTS ---
 with st.sidebar:
@@ -47,39 +54,32 @@ with st.sidebar:
     
     is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
     
-    # --- PREPARE INPUT DATAFRAME (Robust creation) ---
-    
+    # --- PREPARE INPUT DATAFRAME (Using Original Feature Names) ---
     final_input_data = {}
 
     for col in feature_names:
         final_input_data[col] = [0] 
 
-    final_input_data['Handicap'] = [current_handicap]
-    final_input_data['PrevRoundScore'] = [previous_score]
+    # Map current inputs to ORIGINAL feature names: HandicapPre, Lag_OverPar
+    final_input_data['HandicapPre'] = [current_handicap]
+    final_input_data['Lag_OverPar'] = [previous_score]
 
+    # Map Course Side to ORIGINAL feature names: Links_Front Nine (assuming this is your front nine dummy)
     if is_front_nine == "Front Nine":
-        final_input_data['CourseSide_Front Nine'] = [1]
-    else:
-        final_input_data['CourseSide_Back Nine'] = [1] 
-
+        if 'Links_Front Nine' in final_input_data:
+             final_input_data['Links_Front Nine'] = [1]
+    
     player_skill_feature = f'PlayerName_{selected_player}'
     final_input_data[player_skill_feature] = [1]
         
     final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
 
 
-# --- DIAGNOSTIC CODE (TEMPORARY: DELETE THIS LATER) ---
-# st.subheader("⚠️ Diagnostic: Model Input Data")
-# st.markdown("🚨 **CRITICAL CHECK:** This table must change when you adjust sidebar inputs. If it doesn't, the app is not rerunning.")
-# st.dataframe(final_input_df)
-# st.markdown("---")
-# --- END DIAGNOSTIC CODE ---
-
-
-# --- 1. PREDICTION FUNCTION (CRITICAL FIX FOR REACTIVITY) ---
-@st.cache_data(show_spinner=False) # Use st.cache_data to force re-run when inputs change
-def get_predictions(df, linear_model, logistic_model):
-    """Calculates predictions and probability from the input DataFrame."""
+# --- 2. PREDICTION FUNCTION (Reactive Fix) ---
+@st.cache_data(show_spinner=False)
+def get_predictions(df):
+    """Calculates predictions and probability using static models."""
+    global linear_model, logistic_model
     
     # 1. LINEAR REGRESSION PREDICTION
     predicted_score = linear_model.predict(df)[0]
@@ -89,13 +89,10 @@ def get_predictions(df, linear_model, logistic_model):
     
     return predicted_score, probability_to_win
 
-# Run the prediction function with the dynamically changing input DataFrame
-predicted_score, probability_to_win = get_predictions(
-    final_input_df, linear_model, logistic_model
-)
+predicted_score, probability_to_win = get_predictions(final_input_df)
 
 
-# --- 2. DISPLAY METRICS ---
+# --- 3. DISPLAY METRICS ---
 st.header("🔮 Predicted Performance")
 col1, col2 = st.columns(2)
 
@@ -105,9 +102,10 @@ with col1:
 with col2:
     st.metric("**Probability to Score Better Than Average**", f"{probability_to_win:.1f}%")
 
+st.caption(f"Average Prediction Error (RMSE): ±{RMSE_VALUE:.2f} strokes")
 st.markdown("---")
 
-# --- 3. EXPLANATION AND CHARTS ---
+# --- 4. EXPLANATION AND CHARTS ---
 st.header("📊 Contextual Analysis")
 
 tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
@@ -129,6 +127,15 @@ with tab1:
             title=f'{selected_player}: Score Over Time (Trendline: OLS Regression)',
             labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
         )
+        # Add the current prediction as a large red mark (using the next round number)
+        next_round = player_history['RoundNumber'].max() + 1 if not player_history.empty else 1
+        fig.add_scatter(
+            x=[next_round], 
+            y=[predicted_score], 
+            mode='markers', 
+            marker=dict(size=12, color='red', symbol='star'), 
+            name='Current Prediction'
+        )
         fig.update_layout(showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -145,22 +152,22 @@ with tab2:
     
     player_skill_feature = f'PlayerName_{selected_player}'
     
-    # All features to display for comprehensive portfolio view
+    # Include ALL desired features with their ORIGINAL names
     features_to_display = [
-        'Handicap', 
-        'PrevRoundScore', 
-        'CourseSide_Front Nine', 
-        'CourseSide_Back Nine',
+        'HandicapPre', 
+        'Lag_OverPar', 
+        'Links_Front Nine', 
         player_skill_feature  
     ]
     
+    # Filter the DataFrame to only show the chosen features
     display_coef_df = coef_df[coef_df['Feature'].isin(features_to_display)].copy()
     
+    # Rename features for display
     display_coef_df['Feature'] = display_coef_df['Feature'].replace({
-        'Handicap': 'Current Handicap',
-        'PrevRoundScore': 'Previous Score Momentum',
-        'CourseSide_Front Nine': 'Front Nine Bias',
-        'CourseSide_Back Nine': 'Back Nine Bias',
+        'HandicapPre': 'Handicap Adjustment',
+        'Lag_OverPar': 'Previous Score Momentum',
+        'Links_Front Nine': 'Front Nine Course Bias',
         player_skill_feature: 'Player Skill Factor' 
     })
     
@@ -169,15 +176,17 @@ with tab2:
         x='Coefficient', 
         y='Feature', 
         orientation='h',
-        title='Impact of Key Factors on Predicted Score',
-        labels={'Coefficient': 'Impact on Predicted Score (Lower is Better)'}
+        color='Impact', # Use impact for coloring
+        color_continuous_scale=px.colors.diverging.RdBu, # Reverting to Blue/Red gradient
+        labels={'Impact': 'Impact on Predicted OverPar Score (Strokes)'}
     )
-    fig_coef.update_traces(marker_color=['red' if c > 0 else 'green' for c in display_coef_df['Coefficient']])
+    # Re-apply coloring (though ploty may overwrite with gradient scale)
+    fig_coef.update_traces(marker_color=['red' if c > 0 else 'blue' for c in display_coef_df['Coefficient']])
 
     st.plotly_chart(fig_coef, use_container_width=True)
     
     st.markdown(
         """
-        *A **Negative Coefficient (Green)** means that factor (e.g., lower Handicap) drives the predicted score **DOWN** (better).* *A **Positive Coefficient (Red)** means that factor (e.g., higher Previous Score) drives the predicted score **UP** (worse).*
+        *A **Negative Coefficient (Blue)** means that factor (e.g., lower Handicap) drives the predicted score **DOWN** (better).* *A **Positive Coefficient (Red)** means that factor (e.g., higher Previous Score) drives the predicted score **UP** (worse).*
         """
     )
