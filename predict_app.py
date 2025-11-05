@@ -7,8 +7,8 @@ import os
 
 # --- 1. CONFIGURATION & Setup ---
 st.set_page_config(layout="wide")
-st.sidebar.title("Welcome to the Golf Dashboard!")
-st.title("⛳ Advanced Golf League Data Dashboard")
+st.sidebar.title("Welcome to the Golf Dashboard")
+st.title("Advanced Golf League Data Dashboard")
 
 # Define file paths
 model_dir = os.path.dirname(__file__)
@@ -92,7 +92,7 @@ predicted_score, probability_to_win = get_predictions(final_input_df)
 
 
 # --- 4. DISPLAY METRICS ---
-st.header("🔮 Predicted Performance")
+st.header("Predicted Performance")
 col1, col2 = st.columns(2)
 
 with col1:
@@ -105,7 +105,7 @@ st.caption(f"Average Prediction Error (RMSE): ±{RMSE_VALUE:.2f} strokes")
 st.markdown("---")
 
 # --- 5. EXPLANATION AND CHARTS (HISTORICAL ONLY) ---
-st.header("📊 Contextual Analysis")
+st.header("Contextual Analysis")
 
 # Use a single container instead of tabs since we removed the second chart
 st.subheader(f"Historical Trend for {selected_player}")
