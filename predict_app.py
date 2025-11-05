@@ -99,7 +99,6 @@ st.markdown("---")
 # --- 3. EXPLANATION AND CHARTS ---
 st.header("📊 Contextual Analysis")
 
-# FINAL SYNTAX FIX
 tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
 
 # --- TAB 1: HISTORICAL TREND ---
@@ -130,7 +129,7 @@ with tab1:
 with tab2:
     st.subheader("Model Weights: How Inputs Influence Prediction")
     
-    # Extract Coefficients and sort them
+    # Extract Coefficients 
     coef_df = pd.DataFrame({
         'Feature': linear_model.feature_names_in_,
         'Coefficient': linear_model.coef_[0]
@@ -139,18 +138,25 @@ with tab2:
     # Highlight the selected player's skill coefficient
     player_skill_feature = f'PlayerName_{selected_player}'
     
-    # Filter the DataFrame to only show the chosen player, Handicap, and PrevScore
-    display_coef_df = coef_df[
-        (coef_df['Feature'] == 'Handicap') | 
-        (coef_df['Feature'] == 'PrevRoundScore') |
-        (coef_df['Feature'] == player_skill_feature)
-    ].copy()
+    # CRITICAL FIX: Define ALL features to display for a comprehensive portfolio view.
+    features_to_display = [
+        'Handicap', 
+        'PrevRoundScore', 
+        'CourseSide_Front Nine', 
+        'CourseSide_Back Nine',
+        player_skill_feature  
+    ]
+    
+    # Filter the DataFrame to only show the chosen features
+    display_coef_df = coef_df[coef_df['Feature'].isin(features_to_display)].copy()
     
     # Rename features for better display
     display_coef_df['Feature'] = display_coef_df['Feature'].replace({
         'Handicap': 'Current Handicap',
-        'PrevRoundScore': 'Previous Score',
-        player_skill_feature: 'Player Skill Factor'
+        'PrevRoundScore': 'Previous Score Momentum',
+        'CourseSide_Front Nine': 'Front Nine Bias',
+        'CourseSide_Back Nine': 'Back Nine Bias',
+        player_skill_feature: 'Player Skill Factor' 
     })
     
     # Create Bar Chart
