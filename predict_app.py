@@ -30,7 +30,6 @@ def load_assets():
         PLAYER_FEATURE_NAMES = [name for name in feature_names if name.startswith('PlayerName_')]
         player_names = sorted([name.replace("PlayerName_", "") for name in PLAYER_FEATURE_NAMES])
 
-        # Example value for display
         RMSE_VALUE = 2.93
         
         return linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE
@@ -40,49 +39,9 @@ def load_assets():
 
 linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE = load_assets()
 
-# --- DEBUG LINE (KEEP THIS TEMPORARILY) ---
-st.sidebar.markdown("---")
-st.sidebar.caption("DEBUG: Model's Expected Features (First 5):")
-st.sidebar.code(feature_names[:5])
-st.sidebar.caption("Ensure your input features match these exactly.")
-# --- END DEBUG LINE ---
-
-# --- SIDEBAR INPUTS ---
-with st.sidebar:
-    st.header("Round Inputs")
-    
-    selected_player = st.selectbox("1. Select Player", player_names)
-    
-    current_handicap = st.number_input("2. Current Handicap (Numeric)", min_value=0.0, max_value=30.0, value=12.0, step=0.1)
-    
-    previous_score = st.number_input("3. Previous Round Over Par Score", min_value=-10.0, max_value=20.0, value=5.0, step=0.1)
-    
-    is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
-    
-    # --- PREPARE INPUT DATAFRAME (Using Original Feature Names) ---
-    final_input_data = {}
-
-    for col in feature_names:
-        final_input_data[col] = [0] 
-
-    # Map current inputs to ORIGINAL feature names: HandicapPre, Lag_OverPar
-    final_input_data['HandicapPre'] = [current_handicap]
-    final_input_data['Lag_OverPar'] = [previous_score]
-
-    # Map Course Side to ORIGINAL feature names: Links_Front Nine
-    if is_front_nine == "Front Nine":
-        if 'Links_Front Nine' in final_input_data:
-             final_input_data['Links_Front Nine'] = [1]
-    
-    player_skill_feature = f'PlayerName_{selected_player}'
-    final_input_data[player_skill_feature] = [1]
-        
-    final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
-
 
 # --- 2. PREDICTION FUNCTION (CRITICAL FIX: NO CACHE) ---
-# NOTE: Removing @st.cache_data forces this function to rerun and calculate new predictions
-# whenever the input data changes, which solves the static bar issue.
+# NOTE: Removing cache ensures reactivity.
 def get_predictions(df):
     """Calculates predictions and probability using static models."""
     global linear_model, logistic_model
@@ -95,10 +54,46 @@ def get_predictions(df):
     
     return predicted_score, probability_to_win
 
+
+# --- SIDEBAR INPUTS ---
+with st.sidebar:
+    st.header("Round Inputs")
+    
+    selected_player = st.selectbox("1. Select Player", player_names)
+    
+    current_handicap = st.number_input("2. Current Handicap (Numeric)", min_value=0.0, max_value=30.0, value=12.0, step=0.1)
+    
+    previous_score = st.number_input("3. Previous Round Over Par Score", min_value=-10.0, max_value=20.0, value=5.0, step=0.1)
+    
+    is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
+
+
+# --- 3. FEATURE ENGINEERING (REQUIRED FOR PREDICTION) ---
+# This block runs every time the sidebar inputs change, guaranteeing updated input_df
+final_input_data = {}
+
+for col in feature_names:
+    final_input_data[col] = [0] 
+
+# Map current inputs to ORIGINAL feature names: HandicapPre, Lag_OverPar
+final_input_data['HandicapPre'] = [current_handicap]
+final_input_data['Lag_OverPar'] = [previous_score]
+
+# Map Course Side to ORIGINAL feature names: Links_Front Nine
+if is_front_nine == "Front Nine":
+    if 'Links_Front Nine' in final_input_data:
+         final_input_data['Links_Front Nine'] = [1]
+
+player_skill_feature = f'PlayerName_{selected_player}'
+final_input_data[player_skill_feature] = [1]
+    
+final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
+
+# --- RUN PREDICTIONS ---
 predicted_score, probability_to_win = get_predictions(final_input_df)
 
 
-# --- 3. DISPLAY METRICS ---
+# --- 4. DISPLAY METRICS ---
 st.header("🔮 Predicted Performance")
 col1, col2 = st.columns(2)
 
@@ -111,7 +106,7 @@ with col2:
 st.caption(f"Average Prediction Error (RMSE): ±{RMSE_VALUE:.2f} strokes")
 st.markdown("---")
 
-# --- 4. EXPLANATION AND CHARTS ---
+# --- 5. EXPLANATION AND CHARTS ---
 st.header("📊 Contextual Analysis")
 
 tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
@@ -158,7 +153,7 @@ with tab2:
     
     player_skill_feature = f'PlayerName_{selected_player}'
     
-    # Include ALL desired features
+    # Filter for displayed features
     features_to_display = [
         'HandicapPre', 
         'Lag_OverPar', 
@@ -166,7 +161,6 @@ with tab2:
         player_skill_feature  
     ]
     
-    # Filter the DataFrame to only show the chosen features
     display_coef_df = coef_df[coef_df['Feature'].isin(features_to_display)].copy()
     
     # Rename features for display
@@ -186,8 +180,8 @@ with tab2:
         y='Feature', 
         x='Coefficient', 
         orientation='h',
-        color='Color', # Use the explicit color column
-        color_discrete_map={ # Force the colors based on the categorical column
+        color='Color', 
+        color_discrete_map={ 
             'Positive Impact (Worse Score)': 'red',
             'Negative Impact (Better Score)': 'blue'
         },
