@@ -40,8 +40,7 @@ def load_assets():
 linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE = load_assets()
 
 
-# --- 2. PREDICTION FUNCTION (CRITICAL FIX: NO CACHE) ---
-# NOTE: Removing cache ensures reactivity.
+# --- 2. PREDICTION FUNCTION (NO CACHE) ---
 def get_predictions(df):
     """Calculates predictions and probability using static models."""
     global linear_model, logistic_model
@@ -69,7 +68,6 @@ with st.sidebar:
 
 
 # --- 3. FEATURE ENGINEERING (REQUIRED FOR PREDICTION) ---
-# This block runs every time the sidebar inputs change, guaranteeing updated input_df
 final_input_data = {}
 
 for col in feature_names:
@@ -106,98 +104,36 @@ with col2:
 st.caption(f"Average Prediction Error (RMSE): ±{RMSE_VALUE:.2f} strokes")
 st.markdown("---")
 
-# --- 5. EXPLANATION AND CHARTS ---
+# --- 5. EXPLANATION AND CHARTS (HISTORICAL ONLY) ---
 st.header("📊 Contextual Analysis")
 
-tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
+# Use a single container instead of tabs since we removed the second chart
+st.subheader(f"Historical Trend for {selected_player}")
+    
+player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
 
-# --- TAB 1: HISTORICAL TREND ---
-with tab1:
-    st.subheader(f"{selected_player}'s Scoring History")
-    player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
+if not player_history.empty:
+    player_history['RoundNumber'] = range(1, len(player_history) + 1)
     
-    if not player_history.empty:
-        player_history['RoundNumber'] = range(1, len(player_history) + 1)
-        
-        fig = px.scatter(
-            player_history, 
-            x='RoundNumber', 
-            y='OverPar', 
-            color='PlayerName', 
-            trendline='ols',
-            title=f'{selected_player}: Score Over Time (Trendline: OLS Regression)',
-            labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
-        )
-        # Add the current prediction as a large red mark (using the next round number)
-        next_round = player_history['RoundNumber'].max() + 1 if not player_history.empty else 1
-        fig.add_scatter(
-            x=[next_round], 
-            y=[predicted_score], 
-            mode='markers', 
-            marker=dict(size=12, color='red', symbol='star'), 
-            name='Current Prediction'
-        )
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No historical data found for this player.")
-
-# --- TAB 2: MODEL COEFFICIENTS (FINAL, CORRECTED BLOCK) ---
-with tab2:
-    st.subheader("Model Weights: How Inputs Influence Prediction")
-    
-    coef_df = pd.DataFrame({
-        'Feature': linear_model.feature_names_in_,
-        'Coefficient': linear_model.coef_[0]
-    })
-    
-    player_skill_feature = f'PlayerName_{selected_player}'
-    
-    # Filter for displayed features
-    features_to_display = [
-        'HandicapPre', 
-        'Lag_OverPar', 
-        'Links_Front Nine', 
-        player_skill_feature  
-    ]
-    
-    display_coef_df = coef_df[coef_df['Feature'].isin(features_to_display)].copy()
-    
-    # Rename features for display
-    display_coef_df['Feature'] = display_coef_df['Feature'].replace({
-        'HandicapPre': 'Handicap Adjustment',
-        'Lag_OverPar': 'Previous Score Momentum',
-        'Links_Front Nine': 'Front Nine Course Bias',
-        player_skill_feature: 'Player Skill Factor' 
-    })
-    
-    # CRITICAL FIX: Add a dummy 'Color' column for explicit coloring
-    display_coef_df['Color'] = np.where(display_coef_df['Coefficient'] > 0, 'Positive Impact (Worse Score)', 'Negative Impact (Better Score)')
-    
-    # Create the chart
-    fig_coef = px.bar(
-        display_coef_df, 
-        y='Feature', 
-        x='Coefficient', 
-        orientation='h',
-        color='Color', 
-        color_discrete_map={ 
-            'Positive Impact (Worse Score)': 'red',
-            'Negative Impact (Better Score)': 'blue'
-        },
-        labels={'Coefficient': 'Impact on Predicted OverPar Score (Strokes)', 'Feature': 'Factor'} 
+    fig = px.scatter(
+        player_history, 
+        x='RoundNumber', 
+        y='OverPar', 
+        color='PlayerName', 
+        trendline='ols',
+        title='Score Over Time (Trendline: OLS Regression)',
+        labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
     )
-    
-    # Add a vertical line at x=0 for clarity
-    fig_coef.add_vline(x=0, line_width=1, line_dash="dash", line_color="black")
-    
-    # Ensure the Y-axis is sorted by coefficient value for readability
-    fig_coef.update_yaxes(categoryorder='total ascending')
-
-    st.plotly_chart(fig_coef, use_container_width=True)
-    
-    st.markdown(
-        """
-        *A **Negative Coefficient (Blue)** means that factor (e.g., lower Handicap) drives the predicted score **DOWN** (better).* *A **Positive Coefficient (Red)** means that factor (e.g., higher Previous Score) drives the predicted score **UP** (worse).*
-        """
+    # Add the current prediction as a large red mark (using the next round number)
+    next_round = player_history['RoundNumber'].max() + 1 if not player_history.empty else 1
+    fig.add_scatter(
+        x=[next_round], 
+        y=[predicted_score], 
+        mode='markers', 
+        marker=dict(size=12, color='red', symbol='star'), 
+        name='Current Prediction'
     )
+    fig.update_layout(showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("No historical data found for this player.")
