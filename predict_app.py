@@ -24,6 +24,7 @@ def load_assets():
         logistic_model = joblib.load(logistic_model_path)
         historical_data = pd.read_csv(historical_data_path)
         # Create the input feature list (all features except the one being predicted)
+        # Note: feature_names_in_ holds the column order from training
         feature_names = linear_model.feature_names_in_.tolist()
         return linear_model, logistic_model, historical_data, feature_names
     except Exception as e:
@@ -41,84 +42,36 @@ with st.sidebar:
     
     selected_player = st.selectbox("1. Select Player", player_names)
     
-    # Filter features based on the selected player (excluding the player's own dummy var)
-    filtered_features = [f for f in feature_names if f != f'PlayerName_{selected_player}']
-    
     current_handicap = st.number_input("2. Current Handicap (Numeric)", min_value=0.0, max_value=30.0, value=12.0, step=0.1)
     
     previous_score = st.number_input("3. Previous Round Over Par Score", min_value=-10.0, max_value=20.0, value=5.0, step=0.1)
     
     is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
     
-    # --- PREPARE INPUT DATAFRAME ---
-    input_data = {
+    # --- PREPARE INPUT DATAFRAME (CRITICAL FIX FOR NaN/ValueError) ---
+    
+    # Dictionary to hold the user inputs
+    input_data_user = {
         'Handicap': [current_handicap],
         'PrevRoundScore': [previous_score],
+        # Only one of these will be 1, the other is handled below by default=0
         'CourseSide_Front Nine': [1 if is_front_nine == "Front Nine" else 0],
         'CourseSide_Back Nine': [1 if is_front_nine == "Back Nine" else 0],
     }
 
     # Dynamically add the selected player's dummy variable (set to 1)
-    for player in player_names:
-        col_name = f'PlayerName_{player}'
-        input_data[col_name] = [1 if player == selected_player else 0]
-
-    # Create the DataFrame and ensure column order matches training data
-    input_df = pd.DataFrame(input_data)
+    player_skill_feature = f'PlayerName_{selected_player}'
+    input_data_user[player_skill_feature] = [1]
     
-    # Ensure all necessary feature columns (including the unselected players) are present and in order
-    final_input_df = pd.DataFrame(columns=feature_names)
+    # Final structured data dictionary (ensures all model features are present)
+    final_input_data = {}
+    
     for col in feature_names:
-        if col in input_df.columns:
-            final_input_df[col] = input_df[col]
+        if col in input_data_user:
+            # Transfer the user input/1
+            final_input_data[col] = input_data_user[col]
         else:
-            final_input_df[col] = 0 # Default other dummy variables to 0
-
-# --- 1. LINEAR REGRESSION PREDICTION ---
-st.header("🔮 Predicted Performance")
-col1, col2 = st.columns(2)
-
-# Prediction Logic
-predicted_score = linear_model.predict(final_input_df)[0]
-
-with col1:
-    st.metric("Predicted Score (Strokes Over Par)", f"{predicted_score:.2f}")
-
-# --- 2. LOGISTIC REGRESSION PROBABILITY ---
-
-# Probability Logic
-# Predicts the probability of the POSITIVE class (1: Better than Average)
-probability_to_win = logistic_model.predict_proba(final_input_df)[0][1] * 100 
-
-with col2:
-    # **CORRECTED LABEL:** This is the key fix!
-    st.metric("**Probability to Score Better Than Average**", f"{probability_to_win:.1f}%")
-
-st.markdown("---")
-
-# --- 3. EXPLANATION AND CHARTS ---
-st.header("📊 Contextual Analysis")
-
-# FIX for the unterminated string error you found
-tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
-
-# --- TAB 1: HISTORICAL TREND ---
-with tab1:
-    st.subheader(f"{selected_player}'s Scoring History")
-    player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
-    
-    if not player_history.empty:
-        # Create a sequence of rounds for the x-axis
-        player_history['RoundNumber'] = player_history.index + 1
-        
-        fig = px.scatter(
-            player_history, 
-            x='RoundNumber', 
-            y='OverPar', 
-            color='PlayerName', 
-            trendline='ols',
-            title=f'{selected_player}: Score Over Time (Trendline: OLS Regression)',
-            labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
-        )
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+            # Set all other dummy variables (unselected players, course side not chosen) to 0
+            final_input_data[col] = [0]
+            
+    # Create the final DataFrame, guaranteeing correct
