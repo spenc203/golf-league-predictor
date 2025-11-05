@@ -1,177 +1,210 @@
 import streamlit as st
 import pandas as pd
-import joblib
 import numpy as np
+import joblib
 import plotly.express as px
+import os
+import yaml
+from yaml.loader import SafeLoader
+import streamlit_authenticator as stauth
 
-# --- Configuration & Data Loading ---
-st.set_page_config(layout="wide") 
-
+# --- 1. CONFIGURATION AND AUTHENTICATION ---
+# The path is relative to the Streamlit app's root directory (GitHub repo)
 try:
-    # Load Regression Model (Predicts the Score)
-    model = joblib.load('linear_model.pkl')
-    # Load Classification Model (Predicts the Probability)
-    log_model = joblib.load('logistic_model.pkl')
-    # Load Historical Data for charting
-    historical_data = pd.read_csv('historical_data.csv')
+    with open('./config.yaml') as file:
+        config = yaml.load(file, Loader=SafeLoader)
 except FileNotFoundError:
-    st.error("One or more required files (models or historical_data.csv) not found. Please run the prerequisite step in Jupyter.")
+    st.error("Configuration file (config.yaml) not found. Cannot proceed.")
     st.stop()
 
-# Use the features the model was trained on
-MODEL_FEATURE_NAMES = model.feature_names_in_
-PLAYER_FEATURE_NAMES = [name for name in MODEL_FEATURE_NAMES if name.startswith('PlayerName_')]
-SIMPLE_PLAYER_NAMES = [name.replace("PlayerName_", "") for name in PLAYER_FEATURE_NAMES]
-SIMPLE_PLAYER_NAMES.sort()
 
-RMSE_VALUE = 2.93 
+authenticator = stauth.Authenticate(
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
+    config['cookie']['expiry_days']
+)
 
-# --- Function to Create Feature Contribution Chart ---
-def get_feature_contributions(coefs, features):
-    # Combine feature names and coefficients
-    coef_df = pd.DataFrame({'Feature': features, 'Coefficient': coefs})
+# Render the login widget
+name, authentication_status, username = authenticator.login('Login', 'main')
+
+# --- HANDLE LOGIN STATUS ---
+if authentication_status:
+    # --- IF LOGGED IN, RENDER THE APP ---
+    authenticator.logout('Logout', 'sidebar') # Add a logout button to the sidebar
     
-    # Identify and categorize key features
-    contribution_list = []
+    # --- APP STARTS HERE (ALL CODE BELOW MUST BE INDENTED) ---
     
-    # Handicap and Previous Score
-    if 'HandicapPre' in features:
-        hcap_coef = coef_df[coef_df['Feature'] == 'HandicapPre']['Coefficient'].iloc[0]
-        contribution_list.append({'Factor': 'Handicap Adjustment', 'Impact': hcap_coef})
-    if 'Lag_OverPar' in features:
-        lag_coef = coef_df[coef_df['Feature'] == 'Lag_OverPar']['Coefficient'].iloc[0]
-        contribution_list.append({'Factor': 'Previous Score Momentum', 'Impact': lag_coef})
-    if 'Links_Front Nine' in features:
-        links_coef = coef_df[coef_df['Feature'] == 'Links_Front Nine']['Coefficient'].iloc[0]
-        contribution_list.append({'Factor': 'Front Nine Course Bias', 'Impact': links_coef})
+    st.set_page_config(layout="wide")
+    st.sidebar.title(f"Welcome, {name.split()[0]}!")
+    st.title("⛳ Advanced Golf League Data Dashboard")
+    
+    # Define file paths
+    # Note: These paths are relative to the Streamlit app's execution environment
+    model_dir = os.path.dirname(__file__)
+    linear_model_path = os.path.join(model_dir, 'linear_model.pkl')
+    logistic_model_path = os.path.join(model_dir, 'logistic_model.pkl')
+    historical_data_path = os.path.join(model_dir, 'historical_data.csv')
+    
+    # --- LOAD ASSETS ---
+    @st.cache_resource
+    def load_assets():
+        try:
+            linear_model = joblib.load(linear_model_path)
+            logistic_model = joblib.load(logistic_model_path)
+            historical_data = pd.read_csv(historical_data_path)
+            # Create the input feature list (all features except the one being predicted)
+            feature_names = linear_model.feature_names_in_.tolist()
+            return linear_model, logistic_model, historical_data, feature_names
+        except Exception as e:
+            st.error(f"Error loading models or data: {e}. Please ensure all .pkl and .csv files are present.")
+            st.stop()
+
+    linear_model, logistic_model, historical_data, feature_names = load_assets()
+
+    # Get the unique player names for the dropdown
+    player_names = sorted(historical_data['PlayerName'].unique().tolist())
+    
+    # --- SIDEBAR INPUTS ---
+    with st.sidebar:
+        st.header("Round Inputs")
         
-    # Player Baseline (The dropped dummy is 0)
-    baseline_player_name = [name for name in SIMPLE_PLAYER_NAMES if f'PlayerName_{name}' not in PLAYER_FEATURE_NAMES]
-    if baseline_player_name:
-         contribution_list.append({'Factor': f'Baseline Player: {baseline_player_name[0]}', 'Impact': 0.0})
+        selected_player = st.selectbox("1. Select Player", player_names)
+        
+        # Filter features based on the selected player (excluding the player's own dummy var)
+        filtered_features = [f for f in feature_names if f != f'PlayerName_{selected_player}']
+        
+        current_handicap = st.number_input("2. Current Handicap (Numeric)", min_value=0.0, max_value=30.0, value=12.0, step=0.1)
+        
+        previous_score = st.number_input("3. Previous Round Over Par Score", min_value=-10.0, max_value=20.0, value=5.0, step=0.1)
+        
+        is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
+        
+        # --- PREPARE INPUT DATAFRAME ---
+        input_data = {
+            'Handicap': [current_handicap],
+            'PrevRoundScore': [previous_score],
+            'CourseSide_Front Nine': [1 if is_front_nine == "Front Nine" else 0],
+            'CourseSide_Back Nine': [1 if is_front_nine == "Back Nine" else 0],
+        }
 
-    # Add Player specific coefficient
-    player_col_name_full = f'PlayerName_{st.session_state.get("selected_player")}'
-    if player_col_name_full in features:
-        player_coef = coef_df[coef_df['Feature'] == player_col_name_full]['Coefficient'].iloc[0]
-        contribution_list.append({'Factor': f'Player Skill: {st.session_state.get("selected_player")}', 'Impact': player_coef})
+        # Dynamically add the selected player's dummy variable (set to 1)
+        for player in player_names:
+            col_name = f'PlayerName_{player}'
+            input_data[col_name] = [1 if player == selected_player else 0]
 
-    contribution_df = pd.DataFrame(contribution_list)
-    return contribution_df.sort_values(by='Impact', ascending=False)
+        # Create the DataFrame and ensure column order matches training data
+        input_df = pd.DataFrame(input_data)
+        
+        # Ensure all necessary feature columns (including the unselected players) are present and in order
+        final_input_df = pd.DataFrame(columns=feature_names)
+        for col in feature_names:
+            if col in input_df.columns:
+                final_input_df[col] = input_df[col]
+            else:
+                final_input_df[col] = 0 # Default other dummy variables to 0
 
-# --- Streamlit App Layout ---
-st.title("⛳ Golf Score Predictor: 2025 League")
-st.markdown("### Advanced Prediction and Analysis Dashboard")
+    # --- 1. LINEAR REGRESSION PREDICTION ---
+    st.header("🔮 Predicted Performance")
+    col1, col2 = st.columns(2)
 
-col_input, col_metrics = st.columns([1, 1])
-
-# --- Input Panel ---
-with col_input:
-    st.header("Input Parameters")
+    # Prediction Logic
+    predicted_score = linear_model.predict(final_input_df)[0]
     
-    selected_player = st.selectbox("Select Player:", SIMPLE_PLAYER_NAMES, key='selected_player')
+    with col1:
+        st.metric("Predicted Score (Strokes Over Par)", f"{predicted_score:.2f}")
+
+    # --- 2. LOGISTIC REGRESSION PROBABILITY ---
     
+    # Probability Logic
+    # Predicts the probability of the POSITIVE class (1: Better than Average)
+    probability_to_win = logistic_model.predict_proba(final_input_df)[0][1] * 100 
+    
+    with col2:
+        # **FIXED LABEL:** Change "Beat Handicap" to the accurate "Score Better Than Average"
+        st.metric("**Probability to Score Better Than Average**", f"{probability_to_win:.1f}%")
+
     st.markdown("---")
     
-    handicap = st.slider(
-        "Handicap (Pre-Round):", 
-        min_value=0.0, max_value=30.0, value=15.0, step=1.0, format="%.0f"
-    )
-    course_side = st.radio("Course Side:", ('Front Nine', 'Back Nine'))
-    lag_overpar = st.slider(
-        "Previous Round OverPar Score:", 
-        min_value=-5.0, max_value=20.0, value=5.0, step=1.0, format="%.0f"
-    )
-
-# --- Feature Engineering ---
-input_data = pd.DataFrame(0, index=[0], columns=MODEL_FEATURE_NAMES)
-if 'HandicapPre' in input_data.columns: input_data['HandicapPre'] = handicap
-if 'Lag_OverPar' in input_data.columns: input_data['Lag_OverPar'] = lag_overpar
-if course_side == 'Front Nine':
-    if 'Links_Front Nine' in input_data.columns: input_data['Links_Front Nine'] = 1
-
-player_col_name_full = f'PlayerName_{selected_player}'
-if player_col_name_full in input_data.columns:
-    input_data[player_col_name_full] = 1
-
-
-# --- Metrics Panel ---
-with col_metrics:
-    st.header("Prediction Results")
+    # --- 3. EXPLANATION AND CHARTS ---
+    st.header("📊 Contextual Analysis")
     
-    # 1. Regression Prediction (The Score)
-    predicted_overpar = model.predict(input_data)[0]
+    tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
     
-    # 2. Classification Prediction (The Probability)
-    # The output is [Prob_0, Prob_1]. We want Prob_1 (Beating Handicap).
-    prob_beat_hcap = log_model.predict_proba(input_data)[0][1] * 100 
+    # --- TAB 1: HISTORICAL TREND ---
+    with tab1:
+        st.subheader(f"{selected_player}'s Scoring History")
+        player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
+        
+        if not player_history.empty:
+            # Create a sequence of rounds for the x-axis
+            player_history['RoundNumber'] = player_history.index + 1
+            
+            fig = px.scatter(
+                player_history, 
+                x='RoundNumber', 
+                y='OverPar', 
+                color='PlayerName', 
+                trendline='ols',
+                title=f'{selected_player}: Score Over Time (Trendline: OLS Regression)',
+                labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
+            )
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No historical data found for this player.")
 
-    st.metric(
-        label=f"Predicted OverPar Score:",
-        value=f"{predicted_overpar:.2f} Strokes",
-        help="Linear Regression Model Output"
-    )
-    
-    st.metric(
-        label=f"Probability to Beat Handicap:",
-        value=f"{prob_beat_hcap:.1f}%",
-        help="Logistic Regression Model Output: Chance of Net Score < 0"
-    )
-    st.caption(f"Average Prediction Error (RMSE): ±{RMSE_VALUE:.2f} strokes")
+    # --- TAB 2: MODEL COEFFICIENTS ---
+    with tab2:
+        st.subheader("Model Weights: How Inputs Influence Prediction")
+        
+        # Extract Coefficients and sort them
+        coef_df = pd.DataFrame({
+            'Feature': linear_model.feature_names_in_,
+            'Coefficient': linear_model.coef_[0]
+        })
+        # Filter for only relevant features (player name and non-zero features)
+        relevant_features = [f for f in coef_df['Feature'] if f not in ['CourseSide_Back Nine', 'CourseSide_Front Nine'] and coef_df[coef_df['Feature'] == f]['Coefficient'].iloc[0] != 0]
+        
+        # Highlight the selected player's skill coefficient
+        player_skill_feature = f'PlayerName_{selected_player}'
+        
+        # Filter the DataFrame to only show the chosen player, Handicap, and PrevScore
+        display_coef_df = coef_df[
+            (coef_df['Feature'] == 'Handicap') | 
+            (coef_df['Feature'] == 'PrevRoundScore') |
+            (coef_df['Feature'] == player_skill_feature)
+        ].copy()
+        
+        # Rename features for better display
+        display_coef_df['Feature'] = display_coef_df['Feature'].replace({
+            'Handicap': 'Current Handicap',
+            'PrevRoundScore': 'Previous Score',
+            player_skill_feature: 'Player Skill Factor'
+        })
+        
+        # Create Bar Chart
+        fig_coef = px.bar(
+            display_coef_df, 
+            x='Coefficient', 
+            y='Feature', 
+            orientation='h',
+            title='Impact of Key Factors on Predicted Score',
+            labels={'Coefficient': 'Impact on Predicted Score (Lower is Better)'}
+        )
+        # Highlight colors: Green for negative (good), Red for positive (bad)
+        fig_coef.update_traces(marker_color=['red' if c > 0 else 'green' for c in display_coef_df['Coefficient']])
 
+        st.plotly_chart(fig_coef, use_container_width=True)
+        
+        st.markdown(
+            """
+            *A **Negative Coefficient (Green)** means that factor (e.g., lower Handicap) drives the predicted score **DOWN** (better).* *A **Positive Coefficient (Red)** means that factor (e.g., higher Previous Score) drives the predicted score **UP** (worse).*
+            """
+        )
 
-# --- Charts Section ---
-st.markdown("---")
-st.header("Analysis and Context")
-
-col_hist, col_contrib = st.columns(2)
-
-# 1. Historical Chart (Visualizing the "Why")
-with col_hist:
-    st.subheader(f"Historical Trend for {selected_player}")
-    
-    player_history = historical_data[historical_data['PlayerName'] == selected_player]
-    
-    # Plotly Scatter Plot
-    fig = px.scatter(
-        player_history, 
-        x='RoundNumber', 
-        y='OverPar', 
-        trendline='ols', # Add a linear trend line
-        title='Score vs. Time (OverPar)',
-        labels={'OverPar': 'Score (Over Par)', 'RoundNumber': 'Round Number'}
-    )
-    
-    # Add the current prediction as a large red mark (using the next round number)
-    next_round = player_history['RoundNumber'].max() + 1 if not player_history.empty else 1
-    fig.add_scatter(
-        x=[next_round], 
-        y=[predicted_overpar], 
-        mode='markers', 
-        marker=dict(size=12, color='red', symbol='star'), 
-        name='Current Prediction'
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-# 2. Feature Contributions Chart (Visualizing the "How")
-with col_contrib:
-    st.subheader("Model Feature Impact (Strokes Added/Subtracted)")
-
-    # Get the coefficients relative to the current player selection
-    contrib_df = get_feature_contributions(model.coef_, MODEL_FEATURE_NAMES)
-    
-    fig_contrib = px.bar(
-        contrib_df, 
-        y='Factor', 
-        x='Impact', 
-        orientation='h',
-        color='Impact',
-        color_continuous_scale=px.colors.diverging.RdBu,
-        labels={'Impact': 'Impact on Predicted OverPar Score (Strokes)'}
-    )
-    
-    # Add a vertical line at x=0 for clarity
-    fig_contrib.add_vline(x=0, line_width=1, line_dash="dash", line_color="black")
-    
-    st.plotly_chart(fig_contrib, use_container_width=True)
+# --- HANDLE LOGOUT STATUS ---
+elif authentication_status is False:
+    st.error('Username/password is incorrect')
+elif authentication_status is None:
+    st.warning('Please enter your username and password')
