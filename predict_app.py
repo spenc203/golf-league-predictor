@@ -40,12 +40,12 @@ def load_assets():
 
 linear_model, logistic_model, historical_data, feature_names, player_names, RMSE_VALUE = load_assets()
 
-# --- NEW DEBUG LINE ---
+# --- DEBUG LINE (KEEP THIS TEMPORARILY) ---
 st.sidebar.markdown("---")
 st.sidebar.caption("DEBUG: Model's Expected Features (First 5):")
 st.sidebar.code(feature_names[:5])
 st.sidebar.caption("Ensure your input features match these exactly.")
-# --- END NEW DEBUG LINE ---
+# --- END DEBUG LINE ---
 
 # --- SIDEBAR INPUTS ---
 with st.sidebar:
@@ -80,8 +80,9 @@ with st.sidebar:
     final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
 
 
-# --- 2. PREDICTION FUNCTION (CRITICAL FIX FOR REACTIVITY) ---
-@st.cache_data(show_spinner=False)
+# --- 2. PREDICTION FUNCTION (CRITICAL FIX: NO CACHE) ---
+# NOTE: Removing @st.cache_data forces this function to rerun and calculate new predictions
+# whenever the input data changes, which solves the static bar issue.
 def get_predictions(df):
     """Calculates predictions and probability using static models."""
     global linear_model, logistic_model
