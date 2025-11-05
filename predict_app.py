@@ -59,11 +59,11 @@ with st.sidebar:
     for col in feature_names:
         final_input_data[col] = [0] 
 
-    # Map current inputs to ORIGINAL feature names
+    # Map current inputs to ORIGINAL feature names: HandicapPre, Lag_OverPar
     final_input_data['HandicapPre'] = [current_handicap]
     final_input_data['Lag_OverPar'] = [previous_score]
 
-    # Map Course Side to ORIGINAL feature names (Links_Front Nine)
+    # Map Course Side to ORIGINAL feature names: Links_Front Nine
     if is_front_nine == "Front Nine":
         if 'Links_Front Nine' in final_input_data:
              final_input_data['Links_Front Nine'] = [1]
@@ -74,7 +74,7 @@ with st.sidebar:
     final_input_df = pd.DataFrame(final_input_data, columns=feature_names)
 
 
-# --- 2. PREDICTION FUNCTION (Reactive Fix) ---
+# --- 2. PREDICTION FUNCTION (CRITICAL FIX FOR REACTIVITY) ---
 @st.cache_data(show_spinner=False)
 def get_predictions(df):
     """Calculates predictions and probability using static models."""
@@ -140,7 +140,7 @@ with tab1:
     else:
         st.info("No historical data found for this player.")
 
-# --- TAB 2: MODEL COEFFICIENTS ---
+# --- TAB 2: MODEL COEFFICIENTS (FINAL, CORRECTED BLOCK) ---
 with tab2:
     st.subheader("Model Weights: How Inputs Influence Prediction")
     
@@ -170,19 +170,28 @@ with tab2:
         player_skill_feature: 'Player Skill Factor' 
     })
     
-    # CRITICAL FIX for ValueError: Using 'Feature' for Y-axis and 'Coefficient' for X-axis/coloring
+    # CRITICAL FIX: Add a dummy 'Color' column for explicit coloring
+    display_coef_df['Color'] = np.where(display_coef_df['Coefficient'] > 0, 'Positive Impact (Worse Score)', 'Negative Impact (Better Score)')
+    
+    # Create the chart
     fig_coef = px.bar(
         display_coef_df, 
         y='Feature', 
         x='Coefficient', 
         orientation='h',
-        color='Coefficient', 
-        color_continuous_scale=px.colors.diverging.RdBu,
-        labels={'Coefficient': 'Impact on Predicted OverPar Score (Strokes)',
-                'Feature': 'Factor'} 
+        color='Color', # Use the explicit color column
+        color_discrete_map={
+            'Positive Impact (Worse Score)': 'red',
+            'Negative Impact (Better Score)': 'blue'
+        },
+        labels={'Coefficient': 'Impact on Predicted OverPar Score (Strokes)', 'Feature': 'Factor'} 
     )
-    # Re-apply coloring
-    fig_coef.update_traces(marker_color=['red' if c > 0 else 'blue' for c in display_coef_df['Coefficient']])
+    
+    # Add a vertical line at x=0 for clarity
+    fig_coef.add_vline(x=0, line_width=1, line_dash="dash", line_color="black")
+    
+    # Ensure the Y-axis is sorted by coefficient value for readability
+    fig_coef.update_yaxes(categoryorder='total ascending')
 
     st.plotly_chart(fig_coef, use_container_width=True)
     
