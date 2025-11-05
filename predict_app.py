@@ -180,7 +180,7 @@ with tab2:
         x='Coefficient', 
         orientation='h',
         color='Color', # Use the explicit color column
-        color_discrete_map={
+        color_discrete_map={ # Force the colors based on the categorical column
             'Positive Impact (Worse Score)': 'red',
             'Negative Impact (Better Score)': 'blue'
         },
