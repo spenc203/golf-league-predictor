@@ -91,7 +91,7 @@ with col1:
 probability_to_win = logistic_model.predict_proba(final_input_df)[0][1] * 100 
 
 with col2:
-    # **CORRECTED LABEL:** This is the key fix for the ambiguity you found!
+    # **CORRECTED LABEL:** This is the key fix!
     st.metric("**Probability to Score Better Than Average**", f"{probability_to_win:.1f}%")
 
 st.markdown("---")
@@ -99,31 +99,4 @@ st.markdown("---")
 # --- 3. EXPLANATION AND CHARTS ---
 st.header("📊 Contextual Analysis")
 
-tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
-
-# --- TAB 1: HISTORICAL TREND ---
-with tab1:
-    st.subheader(f"{selected_player}'s Scoring History")
-    player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
-    
-    if not player_history.empty:
-        # Create a sequence of rounds for the x-axis
-        player_history['RoundNumber'] = player_history.index + 1
-        
-        fig = px.scatter(
-            player_history, 
-            x='RoundNumber', 
-            y='OverPar', 
-            color='PlayerName', 
-            trendline='ols',
-            title=f'{selected_player}: Score Over Time (Trendline: OLS Regression)',
-            labels={'OverPar': 'Score (Strokes Over Par)', 'RoundNumber': 'Round Number'}
-        )
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No historical data found for this player.")
-
-# --- TAB 2: MODEL COEFFICIENTS ---
-with tab2:
-    st.subheader("Model Weights: How Inputs Influence
+tab1, tab2 = st.tabs(["Player
