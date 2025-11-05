@@ -47,7 +47,7 @@ with st.sidebar:
     
     is_front_nine = st.radio("4. Course Side", options=["Front Nine", "Back Nine"])
     
-    # --- PREPARE INPUT DATAFRAME (Explicitly robust creation to prevent ValueError) ---
+    # --- PREPARE INPUT DATAFRAME (Robust creation) ---
     
     # Dictionary to hold the features required by the model
     final_input_data = {}
@@ -99,13 +99,4 @@ st.markdown("---")
 # --- 3. EXPLANATION AND CHARTS ---
 st.header("📊 Contextual Analysis")
 
-tab1, tab2 = st.tabs(["Player Historical Trend", "Model Feature Impact"])
-
-# --- TAB 1: HISTORICAL TREND ---
-with tab1:
-    st.subheader(f"{selected_player}'s Scoring History")
-    player_history = historical_data[historical_data['PlayerName'] == selected_player].copy()
-    
-    if not player_history.empty:
-        # Create a sequence of rounds for the x-axis
-        player_history['RoundNumber'] = player_history
+tab1, tab2 = st.tabs(["Player Historical Trend",
